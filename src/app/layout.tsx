@@ -15,6 +15,9 @@ export const metadata: Metadata = {
   description: "Gestione spese familiare",
 };
 
+// Evita pre-render statico: le pagine usano Supabase e le env vars sono lette a runtime
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({
   children,
 }: Readonly<{
