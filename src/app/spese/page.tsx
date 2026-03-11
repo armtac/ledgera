@@ -46,6 +46,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -74,6 +75,8 @@ type RigaSpesaWithNames = {
   voce_id: string;
   categoria_id: string;
   sub_categoria_id: string | null;
+  anno_rif: number;
+  mese_rif: number;
   voci: { nome: string } | null;
   categorie: { nome: string } | null;
   sub_categorie: { nome: string } | null;
@@ -128,6 +131,23 @@ function TipoBadge({ tipo }: { tipo: TipoSpesa }) {
 
 const currentYear = new Date().getFullYear();
 
+/** Formatta i periodi di riferimento dalle righe (es. "Gen 25, Feb 25") */
+function formatPeriodiRif(righe: RigaSpesaWithNames[] | undefined): string {
+  if (!righe?.length) return "—";
+  const sorted = [...righe].sort(
+    (a, b) => a.anno_rif - b.anno_rif || a.mese_rif - b.mese_rif
+  );
+  const uniq = sorted.filter(
+    (r, i) =>
+      i === 0 ||
+      r.anno_rif !== sorted[i - 1].anno_rif ||
+      r.mese_rif !== sorted[i - 1].mese_rif
+  );
+  return uniq
+    .map((r) => `${MESI[r.mese_rif - 1]?.slice(0, 3) ?? ""} ${String(r.anno_rif).slice(2)}`)
+    .join(", ");
+}
+
 // --- Main Component ---
 
 export default function SpesePage() {
@@ -156,6 +176,9 @@ export default function SpesePage() {
   const [fonte, setFonte] = useState<string>("");
   const [tipoFilter, setTipoFilter] = useState<string>("");
   const [fornitoreId, setFornitoreId] = useState<string>("");
+  /** quando true, anno/mese filtrano per periodo di riferimento (righe), altrimenti per Data DF */
+  const [filterByPeriodoRif, setFilterByPeriodoRif] = useState(false);
+  const [fatturaSearch, setFatturaSearch] = useState<string>("");
 
   const clearFilters = useCallback(() => {
     setAnno("all");
@@ -167,6 +190,8 @@ export default function SpesePage() {
     setFonte("");
     setTipoFilter("");
     setFornitoreId("");
+    setFilterByPeriodoRif(false);
+    setFatturaSearch("");
     setRowSelection({});
   }, []);
 
@@ -195,6 +220,8 @@ export default function SpesePage() {
               voce_id,
               categoria_id,
               sub_categoria_id,
+              anno_rif,
+              mese_rif,
               voci (nome),
               categorie (nome),
               sub_categorie (nome)
@@ -226,12 +253,25 @@ export default function SpesePage() {
   // Filtered data (client-side)
   const filteredSpese = useMemo(() => {
     return spese.filter((s) => {
-      if (anno && anno !== "all" && s.anno_df !== parseInt(anno, 10)) return false;
-      if (mese && s.mese_df !== parseInt(mese, 10)) return false;
+      if (filterByPeriodoRif) {
+        const righe = s.righe_spesa ?? [];
+        const annoNum = anno && anno !== "all" ? parseInt(anno, 10) : null;
+        const meseNum = mese ? parseInt(mese, 10) : null;
+        if (annoNum !== null || meseNum !== null) {
+          const match = (r: RigaSpesaWithNames) =>
+            (annoNum === null || r.anno_rif === annoNum) &&
+            (meseNum === null || r.mese_rif === meseNum);
+          if (!righe.some(match)) return false;
+        }
+      } else {
+        if (anno && anno !== "all" && s.anno_df !== parseInt(anno, 10)) return false;
+        if (mese && s.mese_df !== parseInt(mese, 10)) return false;
+      }
       if (inseritoDa && s.inserito_da !== inseritoDa) return false;
       if (fonte && s.fonte !== fonte) return false;
       if (tipoFilter && (s as SpesaListItem & { tipo?: string }).tipo !== tipoFilter) return false;
       if (fornitoreId && s.fornitore_id !== fornitoreId) return false;
+      if (fatturaSearch.trim() && !(s.fattura_num ?? "").toLowerCase().includes(fatturaSearch.trim().toLowerCase())) return false;
 
       const riga = s.righe_spesa?.[0];
       if (!riga) return !voceId && !categoriaId && !subCategoriaId;
@@ -242,7 +282,7 @@ export default function SpesePage() {
 
       return true;
     });
-  }, [spese, anno, mese, voceId, categoriaId, subCategoriaId, inseritoDa, fonte, tipoFilter, fornitoreId]);
+  }, [spese, anno, mese, voceId, categoriaId, subCategoriaId, inseritoDa, fonte, tipoFilter, fornitoreId, filterByPeriodoRif, fatturaSearch]);
 
   // Filtered categories by selected voce
   const filteredCategorie = useMemo(() => {
@@ -316,6 +356,12 @@ export default function SpesePage() {
         ),
         cell: ({ row }) =>
           formatPeriodo(row.original.anno_df, row.original.mese_df),
+      },
+      {
+        id: "periodo_rif",
+        accessorFn: (row) => formatPeriodiRif(row.righe_spesa),
+        header: "Periodo rif.",
+        cell: ({ row }) => formatPeriodiRif(row.original.righe_spesa),
       },
       {
         id: "voce",
@@ -414,6 +460,7 @@ export default function SpesePage() {
     () =>
       isMobile
         ? {
+            periodo_rif: false as boolean,
             categoria: false as boolean,
             sub_categoria: false as boolean,
             fornitore: false as boolean,
@@ -442,7 +489,11 @@ export default function SpesePage() {
   );
 
   const anni = useMemo(() => {
-    const years = new Set(spese.map((s) => s.anno_df));
+    const years = new Set<number>();
+    spese.forEach((s) => {
+      years.add(s.anno_df);
+      s.righe_spesa?.forEach((r) => years.add(r.anno_rif));
+    });
     return Array.from(years).sort((a, b) => b - a);
   }, [spese]);
 
@@ -459,6 +510,7 @@ export default function SpesePage() {
       const tipo = (s as SpesaListItem & { tipo?: string }).tipo ?? "ACT";
       return {
         "Data DF": formatPeriodo(s.anno_df, s.mese_df),
+        "Periodo rif.": formatPeriodiRif(s.righe_spesa),
         Voce: riga?.voci?.nome ?? "—",
         Categoria: riga?.categorie?.nome ?? "—",
         "Sub-Categoria": riga?.sub_categorie?.nome ?? "—",
@@ -613,6 +665,30 @@ export default function SpesePage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <label className="flex items-center gap-2 cursor-pointer self-end pb-2">
+              <input
+                type="checkbox"
+                checked={filterByPeriodoRif}
+                onChange={(e) => setFilterByPeriodoRif(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 accent-primary"
+              />
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
+                Anno/Mese = periodo di riferimento
+              </span>
+            </label>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                Cerca fattura #
+              </label>
+              <Input
+                placeholder="es. 412606308816"
+                value={fatturaSearch}
+                onChange={(e) => setFatturaSearch(e.target.value)}
+                className="w-[140px] h-9"
+              />
             </div>
 
             <div className="flex flex-col gap-1.5">
