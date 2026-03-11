@@ -64,7 +64,8 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-import { ArrowUpDown, FileSpreadsheet, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import * as XLSX from "xlsx";
+import { ArrowUpDown, Download, FileSpreadsheet, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { ImportSpese } from "@/components/spese/import-spese";
 
 // --- Types ---
@@ -452,6 +453,31 @@ export default function SpesePage() {
 
   const selectedCount = Object.keys(rowSelection).length;
 
+  const handleExportExcel = useCallback(() => {
+    const rows = filteredSpese.map((s) => {
+      const riga = s.righe_spesa?.[0];
+      const tipo = (s as SpesaListItem & { tipo?: string }).tipo ?? "ACT";
+      return {
+        "Data DF": formatPeriodo(s.anno_df, s.mese_df),
+        Voce: riga?.voci?.nome ?? "—",
+        Categoria: riga?.categorie?.nome ?? "—",
+        "Sub-Categoria": riga?.sub_categorie?.nome ?? "—",
+        Fornitore: s.fornitori?.nome ?? "—",
+        Tipo: tipo,
+        "Fattura #": s.fattura_num ?? "",
+        "Importo Totale": s.importo_totale,
+        "Inserito da": s.inserito_da ?? "",
+        Fonte: FONTE_LABELS[s.fonte as FonteSpesa] ?? s.fonte,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Spese");
+    const filename = `spese_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    toast.success(`Esportate ${rows.length} spese in ${filename}`);
+  }, [filteredSpese]);
+
   const handleBulkDelete = async () => {
     const selectedIds = Object.keys(rowSelection);
     if (selectedIds.length === 0) return;
@@ -521,6 +547,10 @@ export default function SpesePage() {
               Elimina ({selectedCount})
             </Button>
           )}
+          <Button variant="outline" onClick={handleExportExcel} disabled={filteredSpese.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Scarica Excel
+          </Button>
           <Button variant="outline" onClick={() => setImportOpen(true)}>
             <FileSpreadsheet className="mr-2 h-4 w-4" />
             Importa Excel
