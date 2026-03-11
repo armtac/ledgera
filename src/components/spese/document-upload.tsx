@@ -8,7 +8,7 @@ import {
   useRef,
 } from "react";
 import { toast } from "sonner";
-import { FileUp, Loader2, Trash2, FileText, Image } from "lucide-react";
+import { Download, FileUp, Loader2, Trash2, FileText, Image } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/client";
 import type { Documento } from "@/lib/supabase/types";
@@ -40,6 +40,7 @@ export const DocumentUpload = forwardRef<
   const [documents, setDocuments] = useState<Documento[]>(existingDocuments);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [dragOver, setDragOver] = useState(false);
+  const [openingDocId, setOpeningDocId] = useState<string | null>(null);
   const supabase = createClient();
   const documentsRef = useRef(documents);
   documentsRef.current = documents;
@@ -215,6 +216,25 @@ export const DocumentUpload = forwardRef<
     return <FileText className="h-4 w-4 text-muted-foreground" />;
   };
 
+  const handleViewOrDownload = async (doc: Documento) => {
+    setOpeningDocId(doc.id);
+    try {
+      const { data, error } = await supabase.storage
+        .from("documenti")
+        .createSignedUrl(doc.storage_path, 3600);
+      if (error || !data?.signedUrl) {
+        toast.error("Impossibile aprire il file.");
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error(err);
+      toast.error("Errore nell'apertura del file.");
+    } finally {
+      setOpeningDocId(null);
+    }
+  };
+
   const formatSize = (bytes: number | null) => {
     if (!bytes) return "";
     if (bytes < 1024) return `${bytes} B`;
@@ -315,21 +335,39 @@ export const DocumentUpload = forwardRef<
               key={doc.id}
               className="flex items-center justify-between rounded-lg border p-3"
             >
-              <div className="flex items-center gap-3">
-                {getFileIcon(doc.mime_type)}
-                <div>
-                  <p className="text-sm font-medium">{doc.nome_file}</p>
+              <button
+                type="button"
+                onClick={() => handleViewOrDownload(doc)}
+                disabled={openingDocId === doc.id}
+                className="flex flex-1 items-center gap-3 text-left outline-none hover:opacity-80 disabled:opacity-50"
+              >
+                {openingDocId === doc.id ? (
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                  getFileIcon(doc.mime_type)
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-primary underline decoration-primary/30 underline-offset-2">
+                    {doc.nome_file}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {formatSize(doc.dimensione_bytes)} &middot;{" "}
                     {doc.caricato_da}
                   </p>
                 </div>
-              </div>
+                {openingDocId !== doc.id && (
+                  <Download className="h-4 w-4 shrink-0 text-muted-foreground" />
+                )}
+              </button>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => handleDelete(doc)}
-                className="text-muted-foreground hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDelete(doc);
+                }}
+                className="shrink-0 text-muted-foreground hover:text-destructive"
+                aria-label="Elimina documento"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
