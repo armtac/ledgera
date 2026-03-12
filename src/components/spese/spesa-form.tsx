@@ -213,16 +213,16 @@ export function SpesaForm({ mode, spesaId, initialData }: SpesaFormProps) {
       setCategoriaId(first.categoria_id);
       setSubCategoriaId(first.sub_categoria_id ?? "");
 
-      const annoFrom = Math.min(...loadedRighe.map((r) => r.anno_rif));
-      const meseFrom = loadedRighe.find((r) => r.anno_rif === annoFrom)?.mese_rif ?? 1;
-      const annoTo = Math.max(...loadedRighe.map((r) => r.anno_rif));
-      const meseTo =
-        loadedRighe.find((r) => r.anno_rif === annoTo)?.mese_rif ?? 12;
+      const sortedByPeriod = [...loadedRighe].sort(
+        (a, b) => a.anno_rif - b.anno_rif || a.mese_rif - b.mese_rif
+      );
+      const firstPeriod = sortedByPeriod[0];
+      const lastPeriod = sortedByPeriod[sortedByPeriod.length - 1];
 
-      setAnnoDa(annoFrom);
-      setMeseDa(meseFrom);
-      setAnnoA(annoTo);
-      setMeseA(meseTo);
+      setAnnoDa(firstPeriod.anno_rif);
+      setMeseDa(firstPeriod.mese_rif);
+      setAnnoA(lastPeriod.anno_rif);
+      setMeseA(lastPeriod.mese_rif);
 
       setRighe(
         loadedRighe.map((r) => ({
