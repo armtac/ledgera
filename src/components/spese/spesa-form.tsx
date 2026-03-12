@@ -185,8 +185,13 @@ export function SpesaForm({ mode, spesaId, initialData }: SpesaFormProps) {
       .eq("attivo", true)
       .order("ordine", { ascending: true })
       .then(({ data }) => {
-        if (data) setSubCategorie(data as SubCategoria[]);
-        setSubCategoriaId("");
+        const subs = (data ?? []) as SubCategoria[];
+        setSubCategorie(subs);
+        setSubCategoriaId((current) => {
+          if (!current) return current;
+          const stillValid = subs.some((s) => s.id === current);
+          return stillValid ? current : "";
+        });
       });
   }, [categoriaId, supabase]);
 
